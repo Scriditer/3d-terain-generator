@@ -1,0 +1,873 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OSM Terrain 3D</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0b0f1a;--bg2:#111827;--bg3:#1a2236;
+  --border:rgba(255,255,255,0.08);--accent:#3b82f6;
+  --amber:#f59e0b;--text:#e2e8f0;--text2:#94a3b8;
+  --success:#10b981;--danger:#ef4444;
+  --mono:'Courier New',monospace;--sans:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);height:100vh;display:flex;flex-direction:column;overflow:hidden}
+header{display:flex;align-items:center;gap:16px;padding:10px 20px;background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0;z-index:100}
+.logo{display:flex;align-items:center;gap:10px}
+.logo-icon{width:30px;height:30px;background:var(--accent);border-radius:6px;display:flex;align-items:center;justify-content:center}
+.logo-icon svg{width:16px;height:16px;fill:none;stroke:white;stroke-width:2}
+h1{font-size:14px;font-weight:600;letter-spacing:.02em}
+.tagline{font-size:10px;color:var(--text2);font-family:var(--mono)}
+.status-pill{font-family:var(--mono);font-size:11px;padding:3px 10px;border-radius:20px;background:var(--bg3);border:1px solid var(--border);color:var(--text2);transition:all .3s;margin-left:auto}
+.status-pill.active{color:var(--success);border-color:var(--success);background:rgba(16,185,129,.08)}
+.status-pill.loading{color:var(--amber);border-color:var(--amber);background:rgba(245,158,11,.08)}
+.status-pill.error{color:var(--danger);border-color:var(--danger);background:rgba(239,68,68,.08)}
+main{display:flex;flex:1;overflow:hidden}
+.panel{width:270px;flex-shrink:0;background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto}
+.ps{padding:14px;border-bottom:1px solid var(--border)}
+.sl{font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);margin-bottom:10px}
+.inst{background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.2);border-radius:8px;padding:10px;font-size:12px;color:#93c5fd;line-height:1.6}
+.inst .step{display:flex;align-items:flex-start;gap:8px;margin-bottom:6px}
+.inst .step:last-child{margin-bottom:0}
+.sn{background:var(--accent);color:white;border-radius:50%;width:16px;height:16px;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px}
+.cr{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.cl{font-size:12px;color:var(--text2)}
+.toggle{position:relative;width:34px;height:18px}
+.toggle input{opacity:0;width:0;height:0}
+.tt{position:absolute;inset:0;background:var(--bg3);border-radius:20px;border:1px solid var(--border);cursor:pointer;transition:background .2s}
+.toggle input:checked+.tt{background:var(--accent);border-color:var(--accent)}
+.tt::after{content:'';position:absolute;left:2px;top:2px;width:12px;height:12px;background:white;border-radius:50%;transition:transform .2s}
+.toggle input:checked+.tt::after{transform:translateX(16px)}
+.sr-row{margin-bottom:10px}
+.sr-hd{display:flex;justify-content:space-between;margin-bottom:5px}
+.sr-nm{font-size:12px;color:var(--text2)}
+.sr-vl{font-size:12px;font-family:var(--mono);color:var(--accent)}
+input[type=range]{width:100%;height:4px;-webkit-appearance:none;appearance:none;background:var(--bg3);border-radius:2px;outline:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;background:var(--accent);cursor:pointer}
+.btn{width:100%;padding:9px;border:none;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:6px;margin-bottom:7px}
+.btn:last-child{margin-bottom:0}
+.btn-primary{background:var(--accent);color:white}
+.btn-primary:hover{background:#2563eb}
+.btn-primary:disabled{background:#1e3a5f;color:#4b6ea8;cursor:not-allowed}
+.btn-secondary{background:var(--bg3);color:var(--text2);border:1px solid var(--border)}
+.btn-secondary:hover{background:#253347;color:var(--text)}
+.sg{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.sc{background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:7px 9px}
+.sc-l{font-size:9px;color:var(--text2);font-family:var(--mono)}
+.sc-v{font-size:14px;font-weight:600;font-family:var(--mono);margin-top:2px}
+.sc-v.blue{color:var(--accent)}.sc-v.amber{color:var(--amber)}.sc-v.green{color:var(--success)}
+.map-area{flex:1;position:relative;display:flex;flex-direction:column;min-width:0}
+#map{width:100%;flex:1}
+#c3d{width:100%;flex:1;display:none;cursor:grab}
+#c3d:active{cursor:grabbing}
+.vt{position:absolute;top:12px;right:12px;z-index:500;display:flex;background:var(--bg2);border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.vb{padding:6px 12px;font-size:12px;font-weight:500;cursor:pointer;border:none;background:transparent;color:var(--text2);transition:all .2s}
+.vb.active{background:var(--accent);color:white}
+.mhint{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);background:var(--bg2);border:1px solid var(--border);border-radius:7px;padding:6px 14px;font-size:11px;color:var(--text2);z-index:500;font-family:var(--mono);white-space:nowrap;pointer-events:none}
+.ohint{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);background:var(--bg2);border:1px solid var(--border);border-radius:7px;padding:6px 14px;font-size:11px;color:var(--text2);z-index:500;font-family:var(--mono);display:none}
+.sov{position:absolute;inset:0;pointer-events:none;z-index:600;display:none;align-items:center;justify-content:center;background:rgba(11,15,26,.88);flex-direction:column;gap:14px}
+.sov.vis{display:flex}
+.sot{font-family:var(--mono);font-size:13px;color:var(--accent);letter-spacing:.1em}
+.sob{width:200px;height:2px;background:var(--bg3);border-radius:2px;overflow:hidden}
+.sof{height:100%;background:var(--accent);transition:width .4s}
+.sos{font-family:var(--mono);font-size:11px;color:var(--text2)}
+.ebox{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:7px;padding:9px 11px;font-size:12px;color:#fca5a5;line-height:1.5;display:none;margin-top:7px}
+.bbox{font-family:var(--mono);font-size:10px;color:var(--text2);background:var(--bg3);border-radius:6px;padding:8px;line-height:1.9}
+.bbox .bc{color:var(--amber)}
+.legend .lrow{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text2);margin-bottom:5px}
+.sw{width:12px;height:12px;border-radius:3px;flex-shrink:0}
+select{background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;padding:5px 7px;width:100%;outline:none;cursor:pointer;margin-bottom:7px}
+select:focus{border-color:var(--accent)}
+.dbg{background:rgba(59,130,246,.05);border:1px solid rgba(59,130,246,.15);border-radius:6px;padding:8px;font-family:var(--mono);font-size:10px;color:var(--text2);line-height:1.8;display:none;margin-top:7px;max-height:120px;overflow-y:auto}
+.dbg .ok{color:var(--success)}.dbg .warn{color:var(--amber)}.dbg .err{color:var(--danger)}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">
+    <div class="logo-icon"><svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div>
+    <div><h1>OSM Terrain 3D</h1><div class="tagline">OpenStreetMap · SRTM Elevation · Three.js</div></div>
+  </div>
+  <div class="status-pill" id="spill">READY</div>
+</header>
+
+<main>
+  <div class="panel">
+    <div class="ps">
+      <div class="sl">Instructions</div>
+      <div class="inst">
+        <div class="step"><span class="sn">1</span><span>Navigate to any area on the map</span></div>
+        <div class="step"><span class="sn">2</span><span>Draw a rectangle with the ■ tool (top-left)</span></div>
+        <div class="step"><span class="sn">3</span><span>Click Generate 3D Model</span></div>
+        <div class="step"><span class="sn">4</span><span>Orbit / zoom the result</span></div>
+      </div>
+    </div>
+
+    <div class="ps">
+      <div class="sl">Selected Region</div>
+      <div class="bbox" id="bbox-display">No region selected</div>
+    </div>
+
+    <div class="ps">
+      <div class="sl">Layers</div>
+      <div class="cr"><span class="cl">🏔 Terrain</span><label class="toggle"><input type="checkbox" id="tog-terrain" checked><span class="tt"></span></label></div>
+      <div class="cr"><span class="cl">🏢 Buildings</span><label class="toggle"><input type="checkbox" id="tog-buildings" checked><span class="tt"></span></label></div>
+      <div class="cr"><span class="cl">🛣 Roads</span><label class="toggle"><input type="checkbox" id="tog-roads" checked><span class="tt"></span></label></div>
+      <div class="cr"><span class="cl">💧 Waterways</span><label class="toggle"><input type="checkbox" id="tog-water" checked><span class="tt"></span></label></div>
+
+      <div class="sr-row">
+        <div class="sr-hd"><span class="sr-nm">Elevation exaggeration</span><span class="sr-vl" id="val-elev">3×</span></div>
+        <input type="range" id="sl-elev" min="1" max="10" step="0.5" value="3">
+      </div>
+      <div class="sr-row">
+        <div class="sr-hd"><span class="sr-nm">Building height scale</span><span class="sr-vl" id="val-bldg">1.0×</span></div>
+        <input type="range" id="sl-bldg" min="0.2" max="5" step="0.1" value="1">
+      </div>
+      <div class="sr-row">
+        <div class="sr-hd"><span class="sr-nm">Elevation grid resolution</span><span class="sr-vl" id="val-res">32×32</span></div>
+        <input type="range" id="sl-res" min="16" max="64" step="8" value="32">
+      </div>
+    </div>
+
+    <div class="ps">
+      <div class="sl">Style</div>
+      <select id="style-sel">
+        <option value="realistic">Realistic</option>
+        <option value="topo">Topographic</option>
+        <option value="night">Dark / Night</option>
+        <option value="blueprint">Blueprint</option>
+      </select>
+    </div>
+
+    <div class="ps">
+      <div class="sl">Actions</div>
+      <button class="btn btn-primary" id="btn-gen" disabled>▶ Generate 3D Model</button>
+      <button class="btn btn-secondary" id="btn-reset">↺ Clear &amp; Reset</button>
+      <div class="ebox" id="ebox"></div>
+      <div class="dbg" id="dbg-log"></div>
+    </div>
+
+    <div class="ps" id="stats-sec" style="display:none">
+      <div class="sl">Scene Info</div>
+      <div class="sg">
+        <div class="sc"><div class="sc-l">BUILDINGS</div><div class="sc-v blue" id="st-b">0</div></div>
+        <div class="sc"><div class="sc-l">ROAD WAYS</div><div class="sc-v amber" id="st-r">0</div></div>
+        <div class="sc"><div class="sc-l">ELEV RANGE</div><div class="sc-v green" id="st-e">–</div></div>
+        <div class="sc"><div class="sc-l">AREA</div><div class="sc-v" id="st-a">–</div></div>
+      </div>
+    </div>
+
+    <div class="ps">
+      <div class="sl">Legend</div>
+      <div class="legend">
+        <div class="lrow"><div class="sw" style="background:#4a7c59"></div>Terrain low</div>
+        <div class="lrow"><div class="sw" style="background:#c4a882"></div>Terrain high</div>
+        <div class="lrow"><div class="sw" style="background:#94a3b8"></div>Buildings</div>
+        <div class="lrow"><div class="sw" style="background:#f59e0b"></div>Major roads</div>
+        <div class="lrow"><div class="sw" style="background:#64748b"></div>Minor roads</div>
+        <div class="lrow"><div class="sw" style="background:#3b82f6"></div>Water</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="map-area">
+    <div id="map"></div>
+    <canvas id="c3d"></canvas>
+
+    <div class="vt">
+      <button class="vb active" id="btn-mapv">Map</button>
+      <button class="vb" id="btn-3dv" disabled>3D</button>
+    </div>
+    <div class="mhint" id="mhint">Use the ■ rectangle tool (top-left of map) to select a region</div>
+    <div class="ohint" id="ohint">Left drag: orbit · Right drag / middle drag: pan · Scroll: zoom</div>
+
+    <div class="sov" id="sov">
+      <div class="sot" id="sot">INITIALISING</div>
+      <div class="sob"><div class="sof" id="sof"></div></div>
+      <div class="sos" id="sos">Please wait...</div>
+    </div>
+  </div>
+</main>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+'use strict';
+
+// ── globals ───────────────────────────────────────────────────────────────────
+let selBounds = null;
+let renderer = null, scene3 = null, cam = null, animId = null;
+let sceneData = null;
+let isDrag = false, isRight = false, isMid = false;
+let prevMx = 0, prevMy = 0;
+let sph = { theta: 0.5, phi: 0.9, r: 130 };
+let pan = { x: 0, y: 0 };
+
+// ── debug log ─────────────────────────────────────────────────────────────────
+function dbg(msg, cls) {
+  const el = document.getElementById('dbg-log');
+  el.style.display = 'block';
+  const line = document.createElement('div');
+  line.className = cls || '';
+  line.textContent = '[' + new Date().toLocaleTimeString() + '] ' + msg;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+// ── map setup ─────────────────────────────────────────────────────────────────
+const map = L.map('map').setView([-31.95, 115.86], 14);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap contributors', maxZoom: 19
+}).addTo(map);
+
+const drawn = new L.FeatureGroup().addTo(map);
+const drawCtrl = new L.Control.Draw({
+  draw: {
+    rectangle: { shapeOptions: { color: '#3b82f6', weight: 2, fillOpacity: 0.08 } },
+    polygon: false, polyline: false, circle: false, circlemarker: false, marker: false
+  },
+  edit: { featureGroup: drawn }
+});
+map.addControl(drawCtrl);
+
+map.on(L.Draw.Event.CREATED, e => {
+  drawn.clearLayers();
+  drawn.addLayer(e.layer);
+  selBounds = e.layer.getBounds();
+  showBBox(selBounds);
+  document.getElementById('btn-gen').disabled = false;
+  setStatus('REGION SET', 'active');
+  document.getElementById('mhint').textContent = 'Region set — click Generate 3D Model';
+});
+
+map.on(L.Draw.Event.DELETED, () => {
+  selBounds = null;
+  document.getElementById('btn-gen').disabled = true;
+  document.getElementById('btn-3dv').disabled = true;
+  document.getElementById('bbox-display').textContent = 'No region selected';
+  setStatus('READY', '');
+});
+
+function showBBox(b) {
+  document.getElementById('bbox-display').innerHTML =
+    `N: <span class="bc">${b.getNorth().toFixed(5)}</span>  S: <span class="bc">${b.getSouth().toFixed(5)}</span><br>` +
+    `W: <span class="bc">${b.getWest().toFixed(5)}</span>  E: <span class="bc">${b.getEast().toFixed(5)}</span>`;
+}
+
+// ── ui helpers ────────────────────────────────────────────────────────────────
+function setStatus(txt, cls) {
+  const el = document.getElementById('spill');
+  el.textContent = txt;
+  el.className = 'status-pill' + (cls ? ' ' + cls : '');
+}
+
+function scan(title, sub, pct) {
+  const ov = document.getElementById('sov');
+  ov.classList.add('vis');
+  document.getElementById('sot').textContent = title;
+  document.getElementById('sos').textContent = sub;
+  document.getElementById('sof').style.width = pct + '%';
+}
+
+function hideScan() { document.getElementById('sov').classList.remove('vis'); }
+
+function showErr(msg) {
+  const el = document.getElementById('ebox');
+  el.textContent = msg; el.style.display = 'block';
+  setTimeout(() => el.style.display = 'none', 10000);
+}
+
+// ── slider wiring ─────────────────────────────────────────────────────────────
+document.getElementById('sl-elev').addEventListener('input', e => {
+  document.getElementById('val-elev').textContent = e.target.value + '×';
+  if (sceneData) rebuildScene();
+});
+document.getElementById('sl-bldg').addEventListener('input', e => {
+  document.getElementById('val-bldg').textContent = parseFloat(e.target.value).toFixed(1) + '×';
+  if (sceneData) rebuildScene();
+});
+document.getElementById('sl-res').addEventListener('input', e => {
+  const v = parseInt(e.target.value);
+  document.getElementById('val-res').textContent = v + '×' + v;
+});
+['tog-terrain','tog-buildings','tog-roads','tog-water'].forEach(id => {
+  document.getElementById(id).addEventListener('change', () => { if (sceneData) rebuildScene(); });
+});
+document.getElementById('style-sel').addEventListener('change', () => { if (sceneData) rebuildScene(); });
+
+document.getElementById('btn-reset').addEventListener('click', () => {
+  drawn.clearLayers(); selBounds = null;
+  document.getElementById('btn-gen').disabled = true;
+  document.getElementById('btn-3dv').disabled = true;
+  document.getElementById('bbox-display').textContent = 'No region selected';
+  document.getElementById('mhint').textContent = 'Use the ■ rectangle tool (top-left of map) to select a region';
+  setStatus('READY','');
+  showMapView();
+});
+document.getElementById('btn-gen').addEventListener('click', generate);
+document.getElementById('btn-mapv').addEventListener('click', showMapView);
+document.getElementById('btn-3dv').addEventListener('click', show3DView);
+
+function showMapView() {
+  document.getElementById('map').style.display = 'block';
+  document.getElementById('c3d').style.display = 'none';
+  document.getElementById('mhint').style.display = 'block';
+  document.getElementById('ohint').style.display = 'none';
+  document.getElementById('btn-mapv').classList.add('active');
+  document.getElementById('btn-3dv').classList.remove('active');
+  map.invalidateSize();
+}
+function show3DView() {
+  document.getElementById('map').style.display = 'none';
+  document.getElementById('c3d').style.display = 'block';
+  document.getElementById('mhint').style.display = 'none';
+  document.getElementById('ohint').style.display = 'block';
+  document.getElementById('btn-mapv').classList.remove('active');
+  document.getElementById('btn-3dv').classList.add('active');
+  resizeRenderer();
+}
+
+// ── elevation fetch ───────────────────────────────────────────────────────────
+async function fetchElevation(bounds, res) {
+  const S = bounds.getSouth(), N = bounds.getNorth();
+  const W = bounds.getWest(), E = bounds.getEast();
+
+  // Build row-major grid: row 0 = south, col 0 = west
+  const points = [];
+  for (let row = 0; row < res; row++) {
+    for (let col = 0; col < res; col++) {
+      points.push({
+        lat: S + (N - S) * row / (res - 1),
+        lon: W + (E - W) * col / (res - 1)
+      });
+    }
+  }
+
+  const elevations = new Array(points.length).fill(null);
+  const BATCH = 100;
+
+  for (let i = 0; i < points.length; i += BATCH) {
+    const batch = points.slice(i, i + BATCH);
+    const locs = batch.map(p => p.lat.toFixed(6) + ',' + p.lon.toFixed(6)).join('|');
+    try {
+      const resp = await fetch('https://api.opentopodata.org/v1/srtm30m?locations=' + locs);
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const data = await resp.json();
+      if (data.status === 'OK' && data.results) {
+        data.results.forEach((r, j) => {
+          elevations[i + j] = (r.elevation !== null && r.elevation !== undefined) ? r.elevation : 0;
+        });
+        dbg('Elevation batch ' + (Math.floor(i/BATCH)+1) + ': got ' + data.results.length + ' pts, sample=' + (data.results[0].elevation||0).toFixed(1)+'m', 'ok');
+      } else {
+        dbg('Elevation batch returned status: ' + data.status, 'warn');
+        for (let j = 0; j < batch.length; j++) elevations[i + j] = 0;
+      }
+    } catch(err) {
+      dbg('Elevation batch failed: ' + err.message, 'err');
+      for (let j = 0; j < batch.length; j++) elevations[i + j] = 0;
+    }
+
+    const pct = Math.round((i + BATCH) / points.length * 45);
+    scan('FETCHING ELEVATION', `${Math.min(i+BATCH, points.length)} / ${points.length} points`, pct);
+    await new Promise(r => setTimeout(r, 50)); // yield to UI
+  }
+
+  // Replace any remaining nulls with 0
+  for (let i = 0; i < elevations.length; i++) if (elevations[i] === null) elevations[i] = 0;
+
+  const minE = Math.min.apply(null, elevations);
+  const maxE = Math.max.apply(null, elevations);
+  dbg('Elevation done. min=' + minE.toFixed(1) + 'm max=' + maxE.toFixed(1) + 'm range=' + (maxE-minE).toFixed(1)+'m', 'ok');
+
+  return { grid: elevations, res, S, N, W, E, minE, maxE };
+}
+
+// ── OSM fetch ─────────────────────────────────────────────────────────────────
+async function fetchOSM(bounds) {
+  const S = bounds.getSouth().toFixed(6), N = bounds.getNorth().toFixed(6);
+  const W = bounds.getWest().toFixed(6), E = bounds.getEast().toFixed(6);
+  const q = `[out:json][timeout:25];(way["building"](${S},${W},${N},${E});way["highway"](${S},${W},${N},${E});way["waterway"](${S},${W},${N},${E}););out body;>;out skel qt;`;
+  const resp = await fetch('https://overpass-api.de/api/interpreter', {
+    method: 'POST',
+    body: 'data=' + encodeURIComponent(q),
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+  });
+  if (!resp.ok) throw new Error('Overpass ' + resp.status);
+  return await resp.json();
+}
+
+// ── OSM parse ─────────────────────────────────────────────────────────────────
+function parseOSM(raw, elevData) {
+  const { S, N, W, E, grid, res } = elevData;
+  const latSpan = N - S, lonSpan = E - W;
+
+  const nodes = {};
+  raw.elements.forEach(e => { if (e.type === 'node') nodes[e.id] = e; });
+
+  // Convert lat/lon to world XZ in range [-50, +50]
+  function toXZ(lat, lon) {
+    return {
+      x: (lon - W) / lonSpan * 100 - 50,
+      z: ((lat - S) / latSpan) * 100 - 50   // z increases northward
+    };
+  }
+
+  // Sample Y from terrain grid given world XZ
+  function sampleY(x, z) {
+    const col = Math.round((x + 50) / 100 * (res - 1));
+    const row = Math.round((z + 50) / 100 * (res - 1));
+    const c = Math.max(0, Math.min(res - 1, col));
+    const r = Math.max(0, Math.min(res - 1, row));
+    return grid[r * res + c] || 0;
+  }
+
+  // Normalise elevation to world Y (same formula as buildTerrain)
+  const elevScale = parseFloat(document.getElementById('sl-elev').value);
+  const minE = elevData.minE, maxE = elevData.maxE;
+  const elevRange = (maxE - minE) || 1;
+
+  function elevToY(rawElev) {
+    return ((rawElev - minE) / elevRange) * elevScale * 15;
+  }
+
+  const buildings = [], roads = [], waterways = [];
+
+  raw.elements.forEach(e => {
+    if (e.type !== 'way' || !e.nodes) return;
+    const pts = e.nodes.map(id => nodes[id]).filter(Boolean);
+    if (pts.length < 2) return;
+    const xz = pts.map(n => toXZ(n.lat, n.lon));
+
+    if (e.tags && e.tags.building) {
+      const levels = parseInt(e.tags['building:levels']) || 2;
+      const heightM = parseFloat(e.tags['height']) || levels * 3.5;
+      const cx = xz.reduce((s,p)=>s+p.x,0)/xz.length;
+      const cz = xz.reduce((s,p)=>s+p.z,0)/xz.length;
+      const baseRaw = sampleY(cx, cz);
+      const baseY = elevToY(baseRaw);
+      buildings.push({ xz, baseY, heightM: Math.min(heightM, 200) });
+    } else if (e.tags && e.tags.highway) {
+      const hw = e.tags.highway;
+      const major = ['motorway','trunk','primary','secondary','tertiary'].includes(hw);
+      const worldPts = xz.map(p => ({ x: p.x, z: p.z, rawElev: sampleY(p.x, p.z) }));
+      roads.push({ pts: worldPts, major });
+    } else if (e.tags && e.tags.waterway) {
+      const worldPts = xz.map(p => ({ x: p.x, z: p.z, rawElev: sampleY(p.x, p.z) }));
+      waterways.push({ pts: worldPts });
+    }
+  });
+
+  dbg('OSM: ' + buildings.length + ' buildings, ' + roads.length + ' roads, ' + waterways.length + ' waterways', 'ok');
+  return { buildings, roads, waterways };
+}
+
+// ── palette ───────────────────────────────────────────────────────────────────
+function getPalette() {
+  switch(document.getElementById('style-sel').value) {
+    case 'topo':      return { lo:0x2d6a4f, hi:0xfefae0, bld:0xe9c46a, rd:0xf4a261, rdm:0xa8dadc, wat:0x219ebc, bg:0x111f17 };
+    case 'night':     return { lo:0x0d1b2a, hi:0x1b4332, bld:0x334155, rd:0xf59e0b, rdm:0x475569, wat:0x1e40af, bg:0x050d15 };
+    case 'blueprint': return { lo:0x0a2342, hi:0x1e4d8c, bld:0x2c7da0, rd:0x90e0ef, rdm:0x48cae4, wat:0x00b4d8, bg:0x03045e };
+    default:          return { lo:0x4a7c59, hi:0xc4a882, bld:0x8fa3b1, rd:0xf59e0b, rdm:0x64748b, wat:0x3b82f6, bg:0x0b0f1a };
+  }
+}
+
+// ── terrain mesh ──────────────────────────────────────────────────────────────
+function buildTerrain(elevData) {
+  const { grid, res, minE, maxE } = elevData;
+  const elevScale = parseFloat(document.getElementById('sl-elev').value);
+  const pal = getPalette();
+  const elevRange = (maxE - minE) || 1;
+  const cLo = new THREE.Color(pal.lo);
+  const cHi = new THREE.Color(pal.hi);
+
+  // Build geometry manually so vertex order is unambiguous.
+  // Grid: row 0 = south (z = -50), row res-1 = north (z = +50)
+  //       col 0 = west  (x = -50), col res-1 = east  (x = +50)
+  const verts = [], cols = [], idxs = [];
+  const tmp = new THREE.Color();
+
+  for (let row = 0; row < res; row++) {
+    for (let col = 0; col < res; col++) {
+      const i = row * res + col;
+      const rawE = grid[i];
+      const worldY = ((rawE - minE) / elevRange) * elevScale * 15;
+      const worldX = (col / (res - 1)) * 100 - 50;
+      const worldZ = (row / (res - 1)) * 100 - 50;
+      verts.push(worldX, worldY, worldZ);
+
+      tmp.lerpColors(cLo, cHi, (rawE - minE) / elevRange);
+      cols.push(tmp.r, tmp.g, tmp.b);
+    }
+  }
+
+  // Two triangles per quad
+  for (let row = 0; row < res - 1; row++) {
+    for (let col = 0; col < res - 1; col++) {
+      const a = row * res + col;
+      const b = a + 1;
+      const c = (row + 1) * res + col;
+      const d = c + 1;
+      idxs.push(a, c, b,  b, c, d);
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+  geo.setAttribute('color',    new THREE.Float32BufferAttribute(cols, 3));
+  geo.setIndex(idxs);
+  geo.computeVertexNormals();
+
+  const mat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.FrontSide });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.receiveShadow = true;
+  return mesh;
+}
+
+// ── buildings ─────────────────────────────────────────────────────────────────
+function buildBuildings(buildings) {
+  const bScale = parseFloat(document.getElementById('sl-bldg').value);
+  const pal = getPalette();
+  const group = new THREE.Group();
+  const elevScale = parseFloat(document.getElementById('sl-elev').value);
+  const { minE, maxE } = sceneData.elevData;
+  const elevRange = (maxE - minE) || 1;
+
+  function elevToY(rawE) { return ((rawE - minE) / elevRange) * elevScale * 15; }
+
+  buildings.forEach(b => {
+    if (b.xz.length < 3) return;
+
+    // Recalculate baseY with current slider value
+    const baseY = elevToY(sceneData.elevData.grid[
+      Math.max(0, Math.min(sceneData.elevData.res - 1,
+        Math.round((b.xz.reduce((s,p)=>s+p.z,0)/b.xz.length + 50) / 100 * (sceneData.elevData.res-1))
+      )) * sceneData.elevData.res +
+      Math.max(0, Math.min(sceneData.elevData.res - 1,
+        Math.round((b.xz.reduce((s,p)=>s+p.x,0)/b.xz.length + 50) / 100 * (sceneData.elevData.res-1))
+      ))
+    ] || 0);
+
+    const worldH = b.heightM * bScale * 0.08;  // scale metres → world units
+    const n = b.xz.length;
+
+    // De-duplicate last point (OSM closes ways)
+    const pts = b.xz.slice();
+    const last = pts[pts.length - 1];
+    const first = pts[0];
+    if (Math.abs(last.x - first.x) < 0.001 && Math.abs(last.z - first.z) < 0.001) pts.pop();
+    if (pts.length < 3) return;
+
+    // Build extruded mesh manually (walls + flat top/bottom cap)
+    const verts = [], idxs = [];
+    const m = pts.length;
+
+    // Bottom ring at baseY, top ring at baseY + worldH
+    for (let i = 0; i < m; i++) {
+      verts.push(pts[i].x, baseY, pts[i].z);            // bottom i
+      verts.push(pts[i].x, baseY + worldH, pts[i].z);   // top i
+    }
+    // Walls
+    for (let i = 0; i < m; i++) {
+      const ni = (i + 1) % m;
+      const b0 = i * 2, b1 = ni * 2;
+      const t0 = b0 + 1, t1 = b1 + 1;
+      idxs.push(b0, b1, t0,  t0, b1, t1);
+    }
+    // Top cap — simple fan
+    const topStart = verts.length / 3;
+    for (let i = 0; i < m; i++) verts.push(pts[i].x, baseY + worldH, pts[i].z);
+    for (let i = 1; i < m - 1; i++) idxs.push(topStart, topStart + i + 1, topStart + i);
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+    geo.setIndex(idxs);
+    geo.computeVertexNormals();
+
+    const mat = new THREE.MeshLambertMaterial({ color: pal.bld });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.castShadow = true;
+    group.add(mesh);
+  });
+  return group;
+}
+
+// ── roads ─────────────────────────────────────────────────────────────────────
+function buildRoads(roads) {
+  const pal = getPalette();
+  const elevScale = parseFloat(document.getElementById('sl-elev').value);
+  const { minE, maxE } = sceneData.elevData;
+  const elevRange = (maxE - minE) || 1;
+  function elevToY(rawE) { return ((rawE - minE) / elevRange) * elevScale * 15 + 0.3; }
+
+  const group = new THREE.Group();
+  roads.forEach(road => {
+    if (road.pts.length < 2) return;
+    const pts3 = road.pts.map(p => new THREE.Vector3(p.x, elevToY(p.rawElev), p.z));
+    // Deduplicate consecutive identical points
+    const clean = [pts3[0]];
+    for (let i = 1; i < pts3.length; i++) {
+      if (pts3[i].distanceTo(pts3[i-1]) > 0.01) clean.push(pts3[i]);
+    }
+    if (clean.length < 2) return;
+
+    try {
+      const curve = new THREE.CatmullRomCurve3(clean);
+      const segs = Math.max(clean.length * 3, 6);
+      const r = road.major ? 0.35 : 0.18;
+      const geo = new THREE.TubeGeometry(curve, segs, r, 4, false);
+      const mat = new THREE.MeshLambertMaterial({ color: road.major ? pal.rd : pal.rdm });
+      group.add(new THREE.Mesh(geo, mat));
+    } catch(e) {}
+  });
+  return group;
+}
+
+// ── waterways ─────────────────────────────────────────────────────────────────
+function buildWater(waterways) {
+  const pal = getPalette();
+  const elevScale = parseFloat(document.getElementById('sl-elev').value);
+  const { minE, maxE } = sceneData.elevData;
+  const elevRange = (maxE - minE) || 1;
+  function elevToY(rawE) { return ((rawE - minE) / elevRange) * elevScale * 15 + 0.15; }
+
+  const group = new THREE.Group();
+  waterways.forEach(w => {
+    if (w.pts.length < 2) return;
+    const pts3 = w.pts.map(p => new THREE.Vector3(p.x, elevToY(p.rawElev), p.z));
+    const clean = [pts3[0]];
+    for (let i = 1; i < pts3.length; i++) {
+      if (pts3[i].distanceTo(pts3[i-1]) > 0.01) clean.push(pts3[i]);
+    }
+    if (clean.length < 2) return;
+    try {
+      const curve = new THREE.CatmullRomCurve3(clean);
+      const geo = new THREE.TubeGeometry(curve, clean.length * 4, 0.6, 6, false);
+      const mat = new THREE.MeshLambertMaterial({ color: pal.wat });
+      group.add(new THREE.Mesh(geo, mat));
+    } catch(e) {}
+  });
+  return group;
+}
+
+// ── Three.js init ──────────────────────────────────────────────────────────────
+function initRenderer() {
+  const canvas = document.getElementById('c3d');
+  if (renderer) { renderer.dispose(); }
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  resizeRenderer();
+  if (animId) cancelAnimationFrame(animId);
+  renderLoop();
+}
+
+function resizeRenderer() {
+  const el = document.getElementById('c3d');
+  const w = el.parentElement.clientWidth;
+  const h = el.parentElement.clientHeight;
+  if (renderer) renderer.setSize(w, h, false);
+  el.style.width  = w + 'px';
+  el.style.height = h + 'px';
+  if (cam) { cam.aspect = w / h; cam.updateProjectionMatrix(); }
+}
+
+function rebuildScene() {
+  if (!renderer) initRenderer();
+
+  scene3 = new THREE.Scene();
+  const pal = getPalette();
+  renderer.setClearColor(pal.bg);
+  scene3.fog = new THREE.FogExp2(pal.bg, 0.005);
+
+  // Lights
+  scene3.add(new THREE.AmbientLight(0xffffff, 0.5));
+  const sun = new THREE.DirectionalLight(0xfff8e7, 1.0);
+  sun.position.set(50, 120, 60);
+  sun.castShadow = true;
+  sun.shadow.camera.left = sun.shadow.camera.bottom = -80;
+  sun.shadow.camera.right = sun.shadow.camera.top = 80;
+  sun.shadow.mapSize.set(2048, 2048);
+  scene3.add(sun);
+  const fill = new THREE.DirectionalLight(0x9bb0ff, 0.25);
+  fill.position.set(-40, 30, -60);
+  scene3.add(fill);
+
+  // Grid
+  const grid = new THREE.GridHelper(100, 20, 0x1c2b3a, 0x1c2b3a);
+  grid.position.y = -0.5;
+  scene3.add(grid);
+
+  if (document.getElementById('tog-terrain').checked) {
+    scene3.add(buildTerrain(sceneData.elevData));
+  }
+  if (document.getElementById('tog-buildings').checked) {
+    scene3.add(buildBuildings(sceneData.osmParsed.buildings));
+  }
+  if (document.getElementById('tog-roads').checked) {
+    scene3.add(buildRoads(sceneData.osmParsed.roads));
+  }
+  if (document.getElementById('tog-water').checked) {
+    scene3.add(buildWater(sceneData.osmParsed.waterways));
+  }
+}
+
+function renderLoop() {
+  animId = requestAnimationFrame(renderLoop);
+  if (!renderer || !scene3 || !cam) return;
+  const x = sph.r * Math.sin(sph.phi) * Math.sin(sph.theta) + pan.x;
+  const y = sph.r * Math.cos(sph.phi);
+  const z = sph.r * Math.sin(sph.phi) * Math.cos(sph.theta);
+  cam.position.set(x, y, z);
+  cam.lookAt(pan.x, 0, pan.y);
+  renderer.render(scene3, cam);
+}
+
+// ── main generate ─────────────────────────────────────────────────────────────
+async function generate() {
+  if (!selBounds) return;
+  const btn = document.getElementById('btn-gen');
+  btn.disabled = true;
+  document.getElementById('ebox').style.display = 'none';
+
+  // Size check
+  const S = selBounds.getSouth(), N = selBounds.getNorth();
+  const W = selBounds.getWest(), E = selBounds.getEast();
+  const latKm  = (N - S) * 111;
+  const lonKm  = (E - W) * 111 * Math.cos(((N + S) / 2) * Math.PI / 180);
+  const areaSqKm = latKm * lonKm;
+  if (areaSqKm > 20) {
+    showErr('Region too large (' + areaSqKm.toFixed(1) + ' km²). Please select < 20 km² for reliable results.');
+    btn.disabled = false;
+    return;
+  }
+
+  setStatus('FETCHING…', 'loading');
+  const res = parseInt(document.getElementById('sl-res').value);
+
+  try {
+    // 1. Elevation
+    scan('FETCHING ELEVATION', 'Querying OpenTopoData SRTM30m…', 5);
+    const elevData = await fetchElevation(selBounds, res);
+
+    // 2. OSM
+    scan('FETCHING MAP DATA', 'Querying Overpass API…', 50);
+    let osmParsed = { buildings: [], roads: [], waterways: [] };
+    try {
+      const raw = await fetchOSM(selBounds);
+      osmParsed = parseOSM(raw, elevData);
+      scan('PARSING OSM', 'Building geometry…', 70);
+      await new Promise(r => setTimeout(r, 50));
+    } catch(e) {
+      dbg('OSM failed (continuing without): ' + e.message, 'warn');
+    }
+
+    sceneData = { elevData, osmParsed };
+
+    // 3. Build scene
+    scan('BUILDING 3D SCENE', 'Generating meshes…', 80);
+    await new Promise(r => setTimeout(r, 50));
+
+    initRenderer();
+    const mapArea = document.getElementById('c3d').parentElement;
+    const canvasW = mapArea.clientWidth, canvasH = mapArea.clientHeight;
+    cam = new THREE.PerspectiveCamera(50, canvasW / canvasH, 0.1, 3000);
+    sph = { theta: 0.5, phi: 0.9, r: 130 }; pan = { x: 0, y: 0 };
+
+    rebuildScene();
+
+    // Stats
+    document.getElementById('st-b').textContent = osmParsed.buildings.length;
+    document.getElementById('st-r').textContent = osmParsed.roads.length;
+    document.getElementById('st-e').textContent = Math.round(elevData.minE) + '–' + Math.round(elevData.maxE) + 'm';
+    document.getElementById('st-a').textContent = areaSqKm.toFixed(2) + 'km²';
+    document.getElementById('stats-sec').style.display = 'block';
+
+    scan('COMPLETE', 'Switching to 3D…', 100);
+    await new Promise(r => setTimeout(r, 300));
+    hideScan();
+
+    document.getElementById('btn-3dv').disabled = false;
+    show3DView();
+    setStatus('3D READY', 'active');
+
+  } catch(err) {
+    hideScan();
+    showErr('Generation failed: ' + err.message);
+    dbg('Fatal: ' + err.message, 'err');
+    setStatus('ERROR', 'error');
+  }
+
+  btn.disabled = false;
+}
+
+// ── 3D orbit controls ─────────────────────────────────────────────────────────
+const c3d = document.getElementById('c3d');
+
+c3d.addEventListener('mousedown', e => {
+  e.preventDefault();
+  isDrag = true;
+  isRight = e.button === 2;
+  isMid   = e.button === 1;
+  prevMx = e.clientX; prevMy = e.clientY;
+});
+window.addEventListener('mouseup',   () => { isDrag = false; });
+c3d.addEventListener('contextmenu',  e => e.preventDefault());
+
+window.addEventListener('mousemove', e => {
+  if (!isDrag) return;
+  const dx = e.clientX - prevMx, dy = e.clientY - prevMy;
+  if (isRight || isMid) {
+    pan.x -= dx * 0.08; pan.y += dy * 0.08;
+  } else {
+    sph.theta -= dx * 0.004;
+    sph.phi    = Math.max(0.08, Math.min(Math.PI * 0.47, sph.phi + dy * 0.004));
+  }
+  prevMx = e.clientX; prevMy = e.clientY;
+});
+
+c3d.addEventListener('wheel', e => {
+  e.preventDefault();
+  sph.r = Math.max(8, Math.min(500, sph.r + e.deltaY * 0.15));
+}, { passive: false });
+
+// Touch
+let lastPinch = 0;
+c3d.addEventListener('touchstart', e => {
+  if (e.touches.length === 1) {
+    isDrag = true; isRight = false;
+    prevMx = e.touches[0].clientX; prevMy = e.touches[0].clientY;
+  } else if (e.touches.length === 2) {
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    lastPinch = Math.sqrt(dx*dx + dy*dy);
+  }
+}, { passive: true });
+c3d.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (e.touches.length === 1 && isDrag) {
+    const dx = e.touches[0].clientX - prevMx, dy = e.touches[0].clientY - prevMy;
+    sph.theta -= dx * 0.004;
+    sph.phi    = Math.max(0.08, Math.min(Math.PI * 0.47, sph.phi + dy * 0.004));
+    prevMx = e.touches[0].clientX; prevMy = e.touches[0].clientY;
+  } else if (e.touches.length === 2) {
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    const dist = Math.sqrt(dx*dx+dy*dy);
+    sph.r = Math.max(8, Math.min(500, sph.r - (dist - lastPinch) * 0.4));
+    lastPinch = dist;
+  }
+}, { passive: false });
+c3d.addEventListener('touchend', () => isDrag = false);
+
+window.addEventListener('resize', () => {
+  if (document.getElementById('c3d').style.display !== 'none') resizeRenderer();
+});
+</script>
+</body>
+</html>
